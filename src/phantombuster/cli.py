@@ -209,10 +209,10 @@ def phantombuster(verbose: bool, outputlog: str, save_results: bool) -> None:
 
 
 @phantombuster.main_command()
-@click.argument("input", type=click.Path(exists=True))
-@click.option("--outdir", required=True)
-@click.option("--regex-file", required=True)
-@click.option("--barcode-hierarchy-file", type=click.Path(exists=True), required=True)
+@click.argument("input", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.option("--outdir", required=True, type=click.Path(dir_okay=True, file_okay=False, writable=True, readable=True))
+@click.option("--regex-file", required=True, type=click.Path(exists=True, dir_okay=False))
+@click.option("--barcode-hierarchy-file", type=click.Path(exists=True, dir_okay=False), required=True)
 @click.option("--debug/--production", default=False)
 @click.option("--show-qc/--no-qc", default=False)
 @click.option("--force/--no-force", default=False)
@@ -235,7 +235,7 @@ def demultiplex(input, regex_file, debug, outdir, show_qc, force, barcode_hierar
 @phantombuster.main_command()
 @click.option("--outdir", required=True)
 @click.option("--error-threshold", default=1)
-@click.option("--barcode-hierarchy-file", required=True)
+@click.option("--barcode-hierarchy-file", required=True, type=click.Path(exists=True, file_okay=True, dir_okay=False))
 def error_correct(outdir, error_threshold, barcode_hierarchy_file):
     """
     Correct sequencing errors originating from single-nucleotide errors
@@ -247,7 +247,7 @@ def error_correct(outdir, error_threshold, barcode_hierarchy_file):
 
 @phantombuster.main_command()
 @click.argument('hopping-barcodes', nargs=-1)
-@click.option("--outdir", required=True)
+@click.option("--outdir", required=True, type=click.Path(dir_okay=True, file_okay=False))
 @click.option("--threshold", default=0.05, type=float)
 def hopping_removal(outdir, threshold, hopping_barcodes):
     """
@@ -259,7 +259,7 @@ def hopping_removal(outdir, threshold, hopping_barcodes):
     core.hopping_removal(project, hopping_barcodes, threshold)
 
 @phantombuster.main_command()
-@click.option("--outdir", required=True)
+@click.option("--outdir", required=True, type=click.Path(dir_okay=True, file_okay=False))
 @click.option("--threshold-file", required=True)
 def threshold(outdir, threshold_file):
     """
@@ -272,7 +272,7 @@ def threshold(outdir, threshold_file):
 # -- Helper Commands -- #
 
 @phantombuster.secondary_command()
-@click.option("--outdir", default=None, required=True)
+@click.option("--outdir", default=None, required=True, type=click.Path(file_okay=False, dir_okay=True, writable=True, readable=True))
 @click.option("--name", default=None)
 def worker(outdir, name):
     """
@@ -290,8 +290,8 @@ def worker(outdir, name):
     worker.start_async()
 
 @phantombuster.secondary_command()
-@click.argument("parquetfile")
-@click.argument("outfile", default=None, required=False)
+@click.argument("parquetfile", type=click.Path(exists=True, readable=True))
+@click.argument("outfile", default=None, required=False, type=click.Path(writable=True))
 def to_csv(parquetfile, outfile):
     """
     Convert a parquet file to a CSV file.
@@ -304,8 +304,8 @@ def to_csv(parquetfile, outfile):
 
 
 @phantombuster.secondary_command()
-@click.argument("csvfile")
-@click.argument("outfile", default=None, required=False)
+@click.argument("csvfile", type=click.Path(exists=True, readable=True, dir_okay=False))
+@click.argument("outfile", default=None, required=False, type=click.Path(exists=False, writable=True, dir_okay=False))
 def to_parquet(csvfile, outfile):
     """
     Convert a CSV file to a parquet file.
@@ -319,7 +319,7 @@ def to_parquet(csvfile, outfile):
 
 @phantombuster.secondary_command()
 @click.argument("prefixes", nargs=-1)
-@click.option("--outdir", required=True)
+@click.option("--outdir", required=True, type=click.Path(dir_okay=True, file_okay=False, readable=True, writable=True))
 @click.option("--prefix")
 @click.option("--barcode-hierarchy-file", type=click.Path(exists=True), required=True)
 def merge(prefixes, outdir, prefix, barcode_hierarchy_file):

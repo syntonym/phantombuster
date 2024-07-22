@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "phantombuster"
-version = "0.13.1"
-description = ""
+version = "0.14.0"
+description = "Bioinformatical tool to remove sequencing artifacts originating from single-nucleotide errors and index hopping from barcode-based experiments"
 authors = ["Simon Haendeler <simon.emanuel.haendeler@univie.ac.at>"]
 readme = "README.md"
 
