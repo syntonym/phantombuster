@@ -1,0 +1,2 @@
+tag,regex
+query,"(?P<lid>(?P<lib>GGGC)(?P<sample>[ACGT]{5})[ACGTN]+)"

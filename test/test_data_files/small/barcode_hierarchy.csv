@@ -1,0 +1,4 @@
+barcode,type,referencefile,threshold,min_length,max_length
+lib,reference,library_barcodes.csv,1,-,-
+sample,reference,sample_barcodes.csv,auto,-,-
+lid,random,-,-,50,50
