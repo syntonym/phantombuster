@@ -194,13 +194,18 @@ def log_call(function, **kwargs):
 
 @click.group(cls=OrderedGroup)
 @click.version_option(package_name='phantombuster')
-@click.option("--verbose/--silent", default=False, help="Enable verbose debugging")
+@click.option("--verbose", is_flag=True, default=False, help="Enable verbose debugging")
 @click.option("-o", "--outputlog", type=click.Path(), help="Output file for logs")
-@click.option("--save-results/--no-save-results", type=bool, default=True, help="DEBUG OPTION set no-save-results to not save which stages were already done")
+@click.option("--save-results/--no-save-results", type=bool, default=True, help="DEVELOPER OPTION", hidden=True)
 def phantombuster(verbose: bool, outputlog: str, save_results: bool) -> None:
     """Bioinformatical tool to remove phantoms from barcode based NGS sequencing data.
 
-    The tool consists of four stages, represented by the four main commands.
+    The tool consists of four stages, represented by the four main commands:
+
+    1. demultiplex     - demultiplex into samples and error correct barcodes with known sequences
+    2. error-correct   - error correct barcodes with random sequences
+    3. hopping-removal - remove barcode combinations that likely originate from index hopping
+    4. threshold       - remove barcode combinations with low read count
     """
     configure_logging(outputlog, verbose)
 
@@ -209,23 +214,25 @@ def phantombuster(verbose: bool, outputlog: str, save_results: bool) -> None:
 
 
 @phantombuster.main_command()
-@click.argument("input", type=click.Path(exists=True, file_okay=True, dir_okay=False))
-@click.option("--outdir", required=True, type=click.Path(dir_okay=True, file_okay=False, writable=True, readable=True))
-@click.option("--regex-file", required=True, type=click.Path(exists=True, dir_okay=False))
-@click.option("--barcode-hierarchy-file", type=click.Path(exists=True, dir_okay=False), required=True)
-@click.option("--debug/--production", default=False)
-@click.option("--show-qc/--no-qc", default=False)
-@click.option("--force/--no-force", default=False)
-def demultiplex(input, regex_file, debug, outdir, show_qc, force, barcode_hierarchy_file):
+@click.argument("input-file", type=click.Path(exists=True, file_okay=True, dir_okay=False))
+@click.option("--outdir", required=True, type=click.Path(dir_okay=True, file_okay=False, writable=True, readable=True), help='Directory to save all results and temp files')
+@click.option("--regex-file", required=True, type=click.Path(exists=True, dir_okay=False), help='CSV file which specifies via regular expressions where barcodes are located')
+@click.option("--barcode-file", type=click.Path(exists=True, dir_okay=False), required=True, help='CSV file that specifies all barcodes and their type')
+@click.option("--debug", is_flag=True, hidden=True, default=False)
+def demultiplex(input_file, regex_file, debug, outdir, barcode_file):
     """
-    Demultiplex BAM/FASTA files into parquet files according to the barcode hierarchy
+    Demultiplex BAM/FASTA files into parquet files
+
+    INPUT_FILE is a path to a CSV file that lists all input files
+
+    Requires additional worker processe, see 'phantombuster worker'.
     """
-    log_call("demultiplex", input=input, regex_file=regex_file, debug=debug,
-             outdir=outdir, show_qc=show_qc, barcode_hierarchy_file=barcode_hierarchy_file)
+    log_call("demultiplex", input_file=input_file, regex_file=regex_file, debug=debug,
+             outdir=outdir, show_qc=False, barcode_hierarchy_file=barcode_hierarchy_file)
     project = Project(outdir)
 
     try:
-        core.demultiplex(input, regex_file, barcode_hierarchy_file, project, debug=debug, show_qc=show_qc)
+        core.demultiplex(input_file, regex_file, barcode_hierarchy_file, project, debug=debug, show_qc=show_qc)
     except Exception as e:
         logging.exception("Pipeline encountered an error. Aborting.")
         raise click.Abort()
@@ -233,25 +240,29 @@ def demultiplex(input, regex_file, debug, outdir, show_qc, force, barcode_hierar
 
 
 @phantombuster.main_command()
-@click.option("--outdir", required=True)
-@click.option("--error-threshold", default=1)
-@click.option("--barcode-hierarchy-file", required=True, type=click.Path(exists=True, file_okay=True, dir_okay=False))
-def error_correct(outdir, error_threshold, barcode_hierarchy_file):
+@click.option("--outdir", required=True, help='Directory to save all results and temp files')
+@click.option("--error-threshold", default=1, help='Maximal Hamming distance to consider two barcode sequences related')
+@click.option("--barcode-file", required=True, type=click.Path(exists=True, file_okay=True, dir_okay=False), help='CSV file that specifies all barcodes and their type')
+def error_correct(outdir, error_threshold, barcode_file):
     """
-    Correct sequencing errors originating from single-nucleotide errors
+    Correct sequencing errors in random barcode sequences originating from single-nucleotide errors
+
+    Requires additional worker processe, see 'phantombuster worker'.
     """
-    log_call("error-correct", outdir=outdir, error_threshold=error_threshold)
+    log_call("error-correct", outdir=outdir, error_threshold=error_threshold, barcode_file=barcode_file)
     project = Project(outdir)
-    core.error_correct(project, error_threshold, barcode_hierarchy_file)
+    core.error_correct(project, error_threshold, barcode_file)
 
 
 @phantombuster.main_command()
 @click.argument('hopping-barcodes', nargs=-1)
-@click.option("--outdir", required=True, type=click.Path(dir_okay=True, file_okay=False))
-@click.option("--threshold", default=0.05, type=float)
+@click.option("--outdir", required=True, type=click.Path(dir_okay=True, file_okay=False), help='Directoy to save all results and temp files')
+@click.option("--threshold", default=0.05, type=click.FloatRange(min=0.0, max=1.0), help='p-value threshold. Lower is more strict.')
 def hopping_removal(outdir, threshold, hopping_barcodes):
     """
     Remove phantom combinations originating from index hopping
+
+    The read count of each barcode combination is compared to the expected read count under index hopping.
     """
     log_call("hopping-removal", outdir=outdir, threshold=threshold, hopping_barcodes=hopping_barcodes)
     project = Project(outdir)
@@ -259,8 +270,8 @@ def hopping_removal(outdir, threshold, hopping_barcodes):
     core.hopping_removal(project, hopping_barcodes, threshold)
 
 @phantombuster.main_command()
-@click.option("--outdir", required=True, type=click.Path(dir_okay=True, file_okay=False))
-@click.option("--threshold-file", required=True)
+@click.option("--outdir", required=True, type=click.Path(dir_okay=True, file_okay=False), help='Directory to save all results and temp files')
+@click.option("--threshold-file", required=True, type=click.Path(file_okay=True, dir_okay=False, exists=True), help='CSV file that specifies the read threshold under which combinations are removed')
 def threshold(outdir, threshold_file):
     """
     Remove combinations with a read count below a threshold

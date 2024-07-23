@@ -12,6 +12,7 @@ It is written for lineage-tracing experiments and CRISPR-screens, but can be use
 
    installation
    commands
+   files
 
 
 .. toctree::

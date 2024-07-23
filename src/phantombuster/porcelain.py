@@ -272,7 +272,7 @@ def _read_mappingfile(mappingfile):
     map = dict(zip(table["sample"].to_pylist(), table["group"].to_pylist()))
     return map
 
-def hopping_removal(input_file, threshold, hopping_barcodes):
+def hopping_removal(input_file, alpha_threshold, hopping_barcodes):
     master_table = pa.parquet.read_table(input_file)
 
     number_of_lineages = len(master_table)
@@ -290,7 +290,7 @@ def hopping_removal(input_file, threshold, hopping_barcodes):
     threshold_list = []
     for barcode in hopping_barcodes:
         logging.info(f"Considering Barcode '{barcode}'")
-        threshold = plumbing.calculate_hopping_threshold(master_table, barcode)
+        threshold = plumbing.calculate_hopping_threshold(master_table, barcode, alpha_threshold=alpha_threshold)
         threshold_list.append(threshold)
     master_table = plumbing.call_hopping(master_table, threshold_list)
 

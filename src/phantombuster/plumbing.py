@@ -596,7 +596,7 @@ def calculate_overlap(table, barcode, lid_barcodes=('lid',), map=None):
     return sorted_table, values
 
 
-def calculate_hopping_threshold(table, hopping_barcodes):
+def calculate_hopping_threshold(table, hopping_barcodes, alpha_threshold=0.05):
 
     anchor_barcodes = [col for col in table.column_names if col not in hopping_barcodes]
     if 'reads' in anchor_barcodes:
@@ -627,7 +627,7 @@ def calculate_hopping_threshold(table, hopping_barcodes):
             else:
                 if sig_categories > 1:
                     p = 1/sig_categories if sig_categories > 0 else 1
-                    threshold = binom.isf(0.05, total_reads, p)
+                    threshold = binom.isf(alpha_threshold, total_reads, p)
                     for r in seen_readcounts:
                         values.append(threshold)
                         #result = scipy.stats.binomtest(read_count, total_reads, p, alternative="greater").pvalue

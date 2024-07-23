@@ -102,12 +102,12 @@ def error_correct(project, error_threshold, barcode_hierarchy_file):
     logging.info('Error correction done')
 
 
-def hopping_removal(project, hopping_barcodes, threshold):
+def hopping_removal(project, hopping_barcodes, alpha_threshold):
     project.create()
 
     table_file = project.error_correct_output_path
 
-    r, stats = porcelain.hopping_removal(table_file, threshold, hopping_barcodes)
+    r, stats = porcelain.hopping_removal(table_file, alpha_threshold, hopping_barcodes)
     write_parquet(r, project.hopping_removal_output_path)
     with open(project.hopping_removal_stats_path, mode='w') as f:
         json.dump(stats, f)
