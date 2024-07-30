@@ -179,7 +179,7 @@ def error_correct(samplefile, outfilename, threshold, barcode_hierarchy, project
 
     logging.debug(f"Reading table {samplefile}")
     df = pl.scan_parquet(samplefile)
-    number_of_reads, number_of_lineages = df.select(pl.col('reads').sum(), pl.count()).collect()
+    number_of_reads, number_of_lineages = df.select(pl.col('reads').sum(), pl.len()).collect()
     number_of_reads, number_of_lineages = number_of_reads[0], number_of_lineages[0]
     logging.debug(f"Table has {number_of_lineages} many rows and {number_of_reads} many reads")
 
@@ -256,6 +256,8 @@ def error_correct_partition(samplefile, lower_or_value, length_opt, threshold, b
     logging.info('Starting error correction')
     corrected_table = plumbing.error_correct(table, barcode_hierarchy, threshold)
     logging.info('Done error correction')
+    logging.info('Starting removal of barcodes with characters besides ACGT')
+    corrected_table = plumbing.remove_ambigious(corrected_table, barcode_hierarchy)
 
     number_of_lineages_corrected = len(corrected_table)
     number_of_reads_corrected = pa.compute.sum(corrected_table["reads"]).as_py()

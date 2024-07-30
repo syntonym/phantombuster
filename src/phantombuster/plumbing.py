@@ -21,6 +21,7 @@ from itertools import tee
 import scipy.stats
 from dataclasses import dataclass
 from scipy.stats._discrete_distns import binom
+import polars as pl
 
 import pyarrow as pa
 
@@ -492,6 +493,14 @@ def error_correct_column(partition, tag, threshold):
     correction = calculate_corrections(tag_and_reads[tag].to_numpy(), tag_and_reads['reads'].to_numpy(), tag_length,  threshold)
     partition = apply_correction(partition, tag, correction)
     return partition
+
+def remove_ambigious(table, barcode_hierarchy):
+    df = pl.from_arrow(table)
+    print(df)
+    for tag in barcode_hierarchy:
+        if tag['type'] == 'random':
+            df = df.filter(~pl.col(tag['name']).str.contains_any(["R", "Y", "S", "W", "K", "M", "B", "D", "H", "V", "N"]))
+    return df.to_arrow()
 
 def deduplicate_single(table):
     idx = pyarrow.compute.sort_indices(table, sort_keys=[(bc, "ascending") for bc in table.column_names])

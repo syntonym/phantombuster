@@ -761,6 +761,24 @@ def test_unit_deduplicate_single():
     assert len(c['reads']) == 4
 
 
+def test_unit_remove_ambigious():
+    sample = [ 's1',  's2']
+    lids =   ['ACG', 'NNN']
+    reads =  [   3 ,    2 ]
+
+    barcode_list= [{"name": "sample", "type": "reference", "reference": None, "referencefile": None, "threshold": 0, "min_length": None, "max_length": None},
+                   {"name": "lid", "type": "random", "threshold": "auto", "min_length": None, "max_length": None},
+                  ]
+
+    sample, lids, reads = np.array(sample), np.array(lids), np.array(reads)
+
+    table = pyarrow.Table.from_arrays([sample, lids, reads], names=['sample', 'lid', 'reads'])
+    table = plumbing.remove_ambigious(table, barcode_list)
+
+    assert np.sum(table['reads']) == 3
+    assert len(table) == 1
+
+
 @pytest.mark.slow
 def test_unit_combine_large_tables():
     bc_hierarchy = [{"name": "LID"}]
