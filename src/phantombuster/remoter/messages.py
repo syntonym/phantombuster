@@ -58,6 +58,20 @@ class FailMsg:
 
 
 @dataclass
+class QueryMsg:
+    """Query properties of the server like number of workers or tasks"""
+
+    property: str
+
+
+@dataclass
+class QueryAnswerMsg:
+    """Answer for a query"""
+
+    property: str
+
+
+@dataclass
 class TaskMsg:
     """Indicates a task to be executed by the worker"""
 
@@ -169,13 +183,13 @@ class JoinMsg:
 
 # Typing Stuff to make sure all messages are always handled in all code paths
 
-Message     =          Union[ OKMsg , FreeMsg, TaskMsg, QuitMsg, LockMsg, WaitMsg, ResultMsg, StoreMsg, FailMsg, ExceptionMsg, JoinMsg, FSaveMsg]
+Message     =          Union[QueryMsg, QueryAnswerMsg, OKMsg , FreeMsg, TaskMsg, QuitMsg, LockMsg, WaitMsg, ResultMsg, StoreMsg, FailMsg, ExceptionMsg, JoinMsg, FSaveMsg]
 
 # A serialized message indicates its type by a token, this lists the available tokens.
 # Order is the same as the Message Type
-MessageType =               ["OKOK" , "FREE" ,  "TASK", "QUIT",  "LOCK",  "WAIT",  "RESULT",  "STORE",  "FAIL", "EXCEPTION", "JOIN", "FSAVE"]
+MessageType =               ["QUERY", "ANSWER", "OKOK" , "FREE" ,  "TASK", "QUIT",  "LOCK",  "WAIT",  "RESULT",  "STORE",  "FAIL", "EXCEPTION", "JOIN", "FSAVE"]
 # Type of MesssageType, used when only the tokens listed in MessageType are accectable
-MessageTypeLiteral = Literal["OKOK" , "FREE" ,  "TASK", "QUIT",  "LOCK",  "WAIT",  "RESULT",  "STORE",  "FAIL", "EXCEPTION", "JOIN", "FSAVE"]
+MessageTypeLiteral = Literal["QUERY", "ANSWER", "OKOK" , "FREE" ,  "TASK", "QUIT",  "LOCK",  "WAIT",  "RESULT",  "STORE",  "FAIL", "EXCEPTION", "JOIN", "FSAVE"]
 
 # Can be used to enable exhaustive type checking in mypy, see https://hakibenita.com/python-mypy-exhaustive-checking
 def assert_never(x: NoReturn) -> NoReturn:
@@ -198,6 +212,10 @@ def parse_json_to_message(j: Dict[str, Any], store: 'Store') -> Message:
         return FreeMsg(j["name"])
     elif t == "OKOK":
         return OKMsg()
+    elif t == "QUERY":
+        return QueryMsg(j["property"])
+    elif t == "ANSWER":
+        return QueryAnswerMsg(j["property"])
     elif t == "FSAVE":
         return FSaveMsg(
             datetime=datetime.strptime(j["datetime"], DATETIME_FORMAT) if j['datetime'] else None,
@@ -265,6 +283,10 @@ def message_to_json(msg: Message) -> Dict[str, Any]:
     """Serialize a message to json-like dict"""
     if isinstance(msg, OKMsg):
         return {"type": "OKOK"}
+    elif isinstance(msg, QueryMsg):
+        return {"type": "QUERY", "property": msg.property}
+    elif isinstance(msg, QueryAnswerMsg):
+        return {"type": "ANSWER", "property": msg.property}
     elif isinstance(msg, FreeMsg):
         return {"type": "FREE", "name": msg.name}
     elif isinstance(msg, TaskMsg):

@@ -106,64 +106,91 @@ def index_fastqgz_file(file, every):
 
 def demultiplex(input_files_file, outpath, outpath_stats, regex_file, barcode_hierarchy_file, debug, show_qc, scheduler):
 
+    logger = logging.getLogger("phantombuster")
+
     input_groups = phantombuster.config_files.read_input_files_file(input_files_file)
 
-    logging.info(f"Deduplicating {len(input_groups)} many groups")
-    logging.info("Reading mappings")
+    logger.info(f"Deduplicating {len(input_groups)} many groups")
+    logger.info("Reading mappings")
 
     # read mapping files
     barcode_hierarchy = phantombuster.config_files.read_barcode_hierarchy_file(barcode_hierarchy_file)
 
     regex_dictionary = phantombuster.config_files.read_regex_file(regex_file)
 
-    logging.info("Indexing %s group(s)", len(input_groups))
+    logger.info("Scheduling indexing %s group(s)", len(input_groups))
     # BGZF blocks per task, each block is <64KB so 20000 should roughly be 1.28 GB
-    idxs = [scheduler.wait(promise, unpack=True) for promise in [scheduler.schedule(index_group, group, 20000) for group in input_groups]]
+    if scheduler.query_workers() == 0:
+        logger.warning("Work is getting scheduled and no workers are currently connected. Launch workers now.")
 
-    logging.info("Parsing file(s) piecewise, %s many subtasks", sum(len(idx) for idx in idxs))
-    logging.debug("Index is %s", idxs)
+    idxs_promises = []
+    for group in input_groups:
+        promise = scheduler.schedule(index_group, group, 20000)
+        idxs_promises.append(promise)
+
+    for promise in idxs_promises:
+        r = 0
+        waiting_time = 0
+        waiting_notice_time = 10
+        while isinstance(r, int):
+            waiting_time += r
+            if waiting_time > waiting_notice_time:
+                waiting_time = 0
+                number_of_workers = scheduler.query_workers()
+                if number_of_workers == 0:
+                    logger.warning("Currently no workes are connected to the server. Server will make no progress without workers.")
+                    if waiting_notice_time == 10:
+                        waiting_notice_time = 60
+                    elif waiting_notice_time == 60:
+                        waiting_notice_time = 10*60
+                else:
+                    waiting_notice_time = 10*60
+            r = scheduler.wait(promise, return_after_wait=True)
+
+    idxs = [scheduler.wait(promise, unpack=True) for promise in idxs_promises]
+
+    logger.info("Parsing file(s) piecewise, %s many subtasks", sum(len(idx) for idx in idxs))
+    logger.debug("Index is %s", idxs)
     outs = []
     for group, index in zip(input_groups, idxs):
         for section in pairwise(index):
-            logging.debug("Scheduling deduplicate section %s", section)
+            logger.debug("Scheduling deduplicate section %s", section)
             t = scheduler.schedule(plumbing.deduplicate_section, group, section, regex_dictionary, barcode_hierarchy, show_qc)
             outs.append(t)
     scheduler.wait_all(outs, unpack=False)
 
-    logging.info("Extracted reads from individual files, combining %s many files", len(outs))
+    logger.info("Extracted reads from individual files, combining %s many files", len(outs))
     new_outs = []
     while len(outs) > 1:
         while len(outs) > 1:
             a = outs.pop(0)
             b = outs.pop(0)
-            logging.debug("Waiting on two files")
+            logger.debug("Waiting on two files")
             scheduler.wait(a, unpack=False)
             scheduler.wait(b, unpack=False)
-            logging.debug("Scheduling merging of two files, %s remaining.", len(outs))
+            logger.debug("Scheduling merging of two files, %s remaining.", len(outs))
             result = scheduler.schedule(plumbing.combine, [a, b], barcode_hierarchy)
             new_outs.append(result)
         if len(outs) == 1:
-            logging.debug("Cannot merge, only one file remaining")
+            logger.debug("Cannot merge, only one file remaining")
             new_outs.append(outs[0])
-        logging.debug("One round done, there were %s many files, now there are %s", len(outs), len(new_outs))
+        logger.debug("One round done, there were %s many files, now there are %s", len(outs), len(new_outs))
         outs = new_outs
         new_outs = []
 
-    logging.info("Waiting for last combination round")
+    logger.debug("Waiting for last combination round")
     out = scheduler.wait(outs[-1], unpack=True)
     if out is None or out[0] is None:
-        logging.error("Not a single read was extracted. This might indicates a problem with the references or a missconfiguration of the regexes. Aborting. ")
-        logging.debug('Result of combining all files is: %s', out)
+        logger.error("Not a single read was extracted. This might indicates a problem with the references or a missconfiguration of the regexes. Aborting. ")
+        logger.debug('Result of combining all files is: %s', out)
         raise Exception()
-
-    logging.info(f"Combined individual outputs, writing output {outpath}")
 
     write_parquet(out[0], outpath)
 
     with open(outpath_stats, mode="w") as f:
         json.dump(out[1], f)
 
-    logging.info("Wrote Exctraction output")
+    logger.info("Demultiplexing done")
     return out
 
 def read_threshold_file(threshold_file):
@@ -175,34 +202,36 @@ def read_threshold_file(threshold_file):
         raise PhantomBusterUnknownFileType("Thresholdfile {threshold_file} has unknown file type. Supported are .csv and .parquet.")
     return f
 
-def error_correct(samplefile, outfilename, threshold, barcode_hierarchy, project):
+def error_correct(samplefile, outfilename, threshold, barcode_hierarchy, project, remove_ambigious):
 
-    logging.debug(f"Reading table {samplefile}")
+    logger = logging.getLogger('phantombuster')
+
+    logger.debug(f"Reading table {samplefile}")
     df = pl.scan_parquet(samplefile)
     number_of_reads, number_of_lineages = df.select(pl.col('reads').sum(), pl.len()).collect()
     number_of_reads, number_of_lineages = number_of_reads[0], number_of_lineages[0]
-    logging.debug(f"Table has {number_of_lineages} many rows and {number_of_reads} many reads")
+    logger.debug(f"Table has {number_of_lineages} many rows and {number_of_reads} many reads")
 
     first_bc = barcode_hierarchy[0]
 
     if first_bc["type"] == 'reference':
-        logging.debug(f"First barcode in hierarchy '{barcode_hierarchy[0]['name']}' is of 'reference' type, partitioning")
+        logger.debug(f"First barcode in hierarchy '{barcode_hierarchy[0]['name']}' is of 'reference' type, partitioning")
         partitions = df.select(pl.col(first_bc['name']).unique().alias('values')).collect()['values'].to_list()
-        logging.debug(f"Partitioning Done, created {len(partitions)} many partitions.")
+        logger.debug(f"Partitioning Done, created {len(partitions)} many partitions.")
     else:
-        logging.debug(f"First barcode in hierarchy '{barcode_hierarchy[0]['name']}' is of 'random' type, no partitioning performed")
+        logger.debug(f"First barcode in hierarchy '{barcode_hierarchy[0]['name']}' is of 'random' type, no partitioning performed")
         partitions = [None]
 
     scheduler = project.get_scheduler()
     with scheduler as scheduler:
-        logging.debug('Distributing each partition to one worker')
+        logger.debug('Distributing each partition to one worker')
         tasks = []
         for value in partitions:
-            task = scheduler.schedule(error_correct_partition, samplefile, value, None, threshold, barcode_hierarchy, use_column=first_bc['name'])
+            task = scheduler.schedule(error_correct_partition, samplefile, value, None, threshold, barcode_hierarchy, use_column=first_bc['name'], remove_ambigious=remove_ambigious)
             tasks.append(task)
-        logging.debug('Distributed all partitions, waiting for workers')
+        logger.debug('Distributed all partitions, waiting for workers')
         results = scheduler.gather(*tasks)
-        logging.debug('Workers done, performing postprocessing')
+        logger.debug('Workers done, performing postprocessing')
 
     tables = [table for table, stats in results]
 
@@ -229,17 +258,19 @@ def error_correct(samplefile, outfilename, threshold, barcode_hierarchy, project
             "reads_uncorrected": number_of_reads,
             "reads_corrected": number_of_reads_corrected}
 
-def error_correct_partition(samplefile, lower_or_value, length_opt, threshold, barcode_hierarchy, use_column=False):
+def error_correct_partition(samplefile, lower_or_value, length_opt, threshold, barcode_hierarchy, use_column=False, remove_ambigious=True):
+
+    logger = logging.getLogger("phantombuster")
 
     if lower_or_value is None:
-        logging.info(f'Read table from {samplefile} completly')
+        logger.info(f'Read table from {samplefile} completly')
         table = pl.scan_parquet(samplefile).collect().to_arrow()
     elif use_column:
         assert isinstance(use_column, str)
         assert isinstance(lower_or_value, str)
         value = lower_or_value
         table = pl.scan_parquet(samplefile).filter(pl.col(use_column) == value).collect().to_arrow()
-        logging.info(f'Read table from {samplefile} with {use_column} only {value}.')
+        logger.info(f'Read table from {samplefile} with {use_column} only {value}.')
     else:
         assert isinstance(lower_or_value, int)
         lower = lower_or_value
@@ -248,16 +279,18 @@ def error_correct_partition(samplefile, lower_or_value, length_opt, threshold, b
 
         table = pa.parquet.read_table(samplefile, memory_map=True, use_threads=False)
         table = table.slice(lower, length)
-        logging.info(f'Read table from {samplefile} from {lower} with length {length}.')
+        logger.info(f'Read table from {samplefile} from {lower} with length {length}.')
 
     number_of_lineages = len(table)
     number_of_reads = pa.compute.sum(table["reads"]).as_py()
 
-    logging.info('Starting error correction')
+    logger.info('Starting error correction')
     corrected_table = plumbing.error_correct(table, barcode_hierarchy, threshold)
-    logging.info('Done error correction')
-    logging.info('Starting removal of barcodes with characters besides ACGT')
-    corrected_table = plumbing.remove_ambigious(corrected_table, barcode_hierarchy)
+    logger.info('Done error correction')
+
+    if remove_ambigious:
+        logger.info('Removing barcode sequences with ambigious characters (NRYSWKMBDHV).')
+        corrected_table = plumbing.remove_ambigious(corrected_table, barcode_hierarchy)
 
     number_of_lineages_corrected = len(corrected_table)
     number_of_reads_corrected = pa.compute.sum(corrected_table["reads"]).as_py()
@@ -275,6 +308,7 @@ def _read_mappingfile(mappingfile):
     return map
 
 def hopping_removal(input_file, alpha_threshold, hopping_barcodes):
+    logger = logging.getLogger("phantombuster")
     master_table = pa.parquet.read_table(input_file)
 
     number_of_lineages = len(master_table)
@@ -282,21 +316,21 @@ def hopping_removal(input_file, alpha_threshold, hopping_barcodes):
 
     for column_name in master_table.column_names:
         if pa.types.is_string(master_table[column_name].type):
-            logging.warning(f"Detected datatype 'string' in column {column_name}, casting to 'large_string'")
+            logger.warning(f"Detected datatype 'string' in column {column_name}, casting to 'large_string'")
             master_table = master_table.set_column(master_table.column_names.index(column_name), column_name, master_table[column_name].cast("large_string"))
         if pa.types.is_binary(master_table[column_name].type):
-            logging.warning(f"Detected datatype 'binary' in column {column_name}, casting to 'large_binary'")
+            logger.warning(f"Detected datatype 'binary' in column {column_name}, casting to 'large_binary'")
             master_table = master_table.set_column(master_table.column_names.index(column_name), column_name, master_table[column_name].cast("large_binary"))
 
-    logging.info("Starting Hopping Removal")
+    logger.info("Starting Hopping Removal")
     threshold_list = []
     for barcode in hopping_barcodes:
-        logging.info(f"Considering Barcode '{barcode}'")
+        logger.info(f"Considering Barcode '{barcode}'")
         threshold = plumbing.calculate_hopping_threshold(master_table, barcode, alpha_threshold=alpha_threshold)
         threshold_list.append(threshold)
     master_table = plumbing.call_hopping(master_table, threshold_list)
 
-    logging.info("Hopping Removal Done")
+    logger.info("Hopping Removal Done")
 
     number_of_lineages_corrected = len(master_table)
     number_of_reads_corrected = pa.compute.sum(master_table["reads"]).as_py()
@@ -319,15 +353,15 @@ def threshold(project, threshold_file):
     if len(thresholds.columns) == 1:
         table = table.filter(pl.col('reads') >= thresholds['threshold'][0])
     else:
-        table = table.join(thresholds, on=[col for col in table.columns if col != 'threshold']).filter(pl.col('reads') >= pl.col('threshold'))
+        columns = table.columns
+        table = table.join(thresholds, on=[col for col in table.columns if col != 'threshold' and col in thresholds.columns]).filter(pl.col('reads') >= pl.col('threshold'))
+        table = table.select(columns)
 
     lids_after = len(table)
     reads_after = table.select(pl.col('reads').sum())['reads'][0]
-
-    table.write_parquet(project.threshold_output_path)
 
     stats = {"lids_before": lids_before,
              "lids_after": lids_after,
              "reads_before": reads_before,
              "reads_after": reads_after}
-    return stats
+    return table.to_arrow(), stats

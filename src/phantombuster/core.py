@@ -80,7 +80,7 @@ def demultiplex(input_files_file, regex_file, barcode_hierarchy_file, project, d
     return r
 
 
-def error_correct(project, error_threshold, barcode_hierarchy_file):
+def error_correct(project, error_threshold, barcode_hierarchy_file, remove_ambigious):
     project.create()
 
     phantombuster.remoter.load(stores.load, dir=str(project.tmp_dir))(porcelain.error_correct_partition)
@@ -91,7 +91,7 @@ def error_correct(project, error_threshold, barcode_hierarchy_file):
     table_file = project.demultiplex_output_path
     out_file = project.error_correct_output_path
 
-    error_corrected = porcelain.error_correct(table_file, out_file, error_threshold, barcode_hierarchy, project)
+    error_corrected = porcelain.error_correct(table_file, out_file, error_threshold, barcode_hierarchy, project, remove_ambigious)
 
     print(f"LIDs after correction: {error_corrected['lids_corrected']}")
     print(f"Reads after correction: {error_corrected['reads_corrected']}")
@@ -119,4 +119,8 @@ def threshold(project, threshold_file):
     # read in threshold file
     thresholds = porcelain.read_threshold_file(threshold_file)
 
-    porcelain.threshold(project, threshold_file)
+    table, stats = porcelain.threshold(project, threshold_file)
+
+    write_parquet(table, project.threshold_output_path)
+    with open(project.threshold_stats_path, mode='w') as f:
+        json.dump(stats, f)

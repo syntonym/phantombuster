@@ -12,7 +12,7 @@ from . import globaladdress
 from .persisters import PersisterMapper
 from .task import Task, hash_function
 from .store import Store
-from .messages import Message, StoreMsg, JoinMsg, WaitMsg, QuitMsg, parse_json_to_message, message_to_json
+from .messages import Message, StoreMsg, JoinMsg, WaitMsg, QuitMsg, parse_json_to_message, message_to_json, QueryMsg, QueryAnswerMsg
 from .async_ import async_gather, async_sleep
 from .socket_ import Socket, ReqSocket
 from .worker import Worker
@@ -201,10 +201,10 @@ class Scheduler:
     def wait_all(self, tasks, unpack=False):
         return [self.wait(task, unpack=unpack) for task in tasks]
 
-    def wait(self, task, unpack=False):
-        return self._wait_for(task, unpack=unpack)
+    def wait(self, task, unpack=False, return_after_wait=False):
+        return self._wait_for(task, unpack=unpack, return_after_wait=return_after_wait)
 
-    def _wait_for(self, task, unpack=False):
+    def _wait_for(self, task, unpack=False, return_after_wait=False):
         self._logger.debug("Waiting for completion of task: %s", task)
         task.calc_hash()
         while not task.is_loadable():
@@ -216,6 +216,8 @@ class Scheduler:
                 self._store._income(msg)
             elif isinstance(msg, WaitMsg):
                 time.sleep(msg.time)
+                if return_after_wait:
+                    return msg.time
             elif isinstance(msg, QuitMsg):
                 self._failed = True
                 self._joined = False
@@ -229,6 +231,31 @@ class Scheduler:
             return task.result
         else:
             return task
+
+    def query_workers(self):
+        self._logger.debug('Quering for number of workers')
+        msg = QueryMsg("workers")
+
+        answered = False
+
+        workers = None
+
+        while not answered:
+            self._send(msg)
+            msg = self._recv()
+
+            if isinstance(msg, WaitMsg):
+                time.sleep(msg.time)
+            elif isinstance(msg, QuitMsg):
+                self._failed = True
+                self._joined = False
+                return None
+            elif isinstance(msg, QueryAnswerMsg):
+                answered = True
+                if msg.property != "None":
+                    workers = int(msg.property)
+
+        return workers
 
     def gather(self, *tasks):
         if self._joined:

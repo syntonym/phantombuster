@@ -10,7 +10,7 @@ from .persisters import PersisterMapper, persister_factory
 from .task import Task, hash_function
 from .store import Store, Remote
 from .async_ import async_run, async_gather
-from .messages import parse_json_to_message, message_to_json, Message, Message, FreeMsg, QuitMsg, WaitMsg, OKMsg, TaskMsg, LockMsg, ResultMsg, StoreMsg, FailMsg, ExceptionMsg, assert_never, JoinMsg, FSaveMsg
+from .messages import parse_json_to_message, message_to_json, Message, Message, FreeMsg, QuitMsg, WaitMsg, OKMsg, TaskMsg, LockMsg, ResultMsg, StoreMsg, FailMsg, ExceptionMsg, assert_never, JoinMsg, FSaveMsg, QueryMsg, QueryAnswerMsg
 from .socket_ import RepSocket, PullSocket
 from .worker import Worker
 
@@ -344,6 +344,15 @@ class Server:
             else:
                 self.worker_manager.notice(message.name)
                 return WaitMsg(self._wait_time)
+
+        elif isinstance(message, QueryMsg):
+            if message.property == 'workers':
+                return QueryAnswerMsg(str(len(self.worker_manager.workers)))
+            else:
+                return QueryAnswerMsg("None")
+
+        elif isinstance(message, QueryAnswerMsg):
+            raise Exception("Server got a QueryAnswerMsg")
 
         elif isinstance(message, OKMsg):
             raise Exception("Server got a OkMessage")

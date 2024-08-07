@@ -1038,7 +1038,7 @@ def test_integration_fullrun_with_ec(setup_lineage_data_big):
         for f in files:
             print(pjoin(root, f))
 
-    core.error_correct(project=project, error_threshold=1, barcode_hierarchy_file='barcode_hierarchy.csv')
+    core.error_correct(project=project, error_threshold=1, barcode_hierarchy_file='barcode_hierarchy.csv', remove_ambigious=True)
 
     print("E15: All files in temporary directory")
     for root, dirs, files in os.walk("."):

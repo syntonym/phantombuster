@@ -9,7 +9,8 @@ Demultiplexing
 --------------
 
 PhantomBuster demultiplexes BAM or FASTQ files, extracts all specified barcodes while error correcting barcodes with known reference sequences.
-For demultiplexing additional worker processes must be started.::
+For demultiplexing additional worker processes must be started.
+The worker processes use inter process communication (IPC) to connect to the demultiplex process and must be started on the same node and in the same working directory.::
 
     phantombuster demultiplex [INPUTFILE] --outdir [DIR] --barcode-hierarchy-file [FILE] --regex-file [FILE] 
     phantombuster worker --outdir [DIR]
@@ -47,7 +48,8 @@ Error Correction
 ----------------
 
 The error correction step employs the UMI-tools error correction algorithm to error correct random barcode sequences.
-For error correction additional worker processes must be started.::
+For error correction additional worker processes must be started.
+The worker processes use inter process communication (IPC) to connect to the demultiplex process and must be started on the same node and in the same working directory.::
 
     phantombuster error-correct --outdir [DIR] --barcode-hierarchy-file [FILE]
     phantombuster worker --outdir [DIR]

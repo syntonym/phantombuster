@@ -228,11 +228,11 @@ def demultiplex(input_file, regex_file, debug, outdir, barcode_file):
     Requires additional worker processe, see 'phantombuster worker'.
     """
     log_call("demultiplex", input_file=input_file, regex_file=regex_file, debug=debug,
-             outdir=outdir, show_qc=False, barcode_hierarchy_file=barcode_hierarchy_file)
+             outdir=outdir, barcode_file=barcode_file)
     project = Project(outdir)
 
     try:
-        core.demultiplex(input_file, regex_file, barcode_hierarchy_file, project, debug=debug, show_qc=show_qc)
+        core.demultiplex(input_file, regex_file, barcode_file, project, debug=debug)
     except Exception as e:
         logging.exception("Pipeline encountered an error. Aborting.")
         raise click.Abort()
@@ -243,6 +243,7 @@ def demultiplex(input_file, regex_file, debug, outdir, barcode_file):
 @click.option("--outdir", required=True, help='Directory to save all results and temp files')
 @click.option("--error-threshold", default=1, help='Maximal Hamming distance to consider two barcode sequences related')
 @click.option("--barcode-file", required=True, type=click.Path(exists=True, file_okay=True, dir_okay=False), help='CSV file that specifies all barcodes and their type')
+@click.option("--remove-ambigious/--keep-ambigious", default=False, help='Remove combinations with ambigious characters (NRYSWKMBDHV) after error correction')
 def error_correct(outdir, error_threshold, barcode_file):
     """
     Correct sequencing errors in random barcode sequences originating from single-nucleotide errors
@@ -251,7 +252,7 @@ def error_correct(outdir, error_threshold, barcode_file):
     """
     log_call("error-correct", outdir=outdir, error_threshold=error_threshold, barcode_file=barcode_file)
     project = Project(outdir)
-    core.error_correct(project, error_threshold, barcode_file)
+    core.error_correct(project, error_threshold, barcode_file, remove_ambigious)
 
 
 @phantombuster.main_command()
@@ -288,6 +289,9 @@ def threshold(outdir, threshold_file):
 def worker(outdir, name):
     """
     Start a worker process
+
+    The worker process uses IPC to connect to the server. It needs to be run on the same node
+    and in the same working directory as the server.
     """
     import phantombuster as phantombuster
     import phantombuster.plumbing
@@ -296,7 +300,6 @@ def worker(outdir, name):
     project.create()
     path = project._get_server_path()
 
-    print(f"Connecting to {path}")
     worker = Worker(path, name=name)
     worker.start_async()
 

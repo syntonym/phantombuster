@@ -49,7 +49,7 @@ class Worker:
         self._socket = sock = ReqSocket()
         self.logger.info("Connecting to %s", self._address)
         sock.connect(self._address)
-        self.logger.debug("Connected successfully to %s", self._address)
+        self.logger.info("Connected successfully to server at %s", self._address)
 
         self._running = True
         self._first_time_free = True
@@ -59,7 +59,7 @@ class Worker:
             while self._running:
                 freemsg = FreeMsg(self._name)
                 if self._first_time_free:
-                    self.logger.info("Sending a message indicating I'm free")
+                    self.logger.debug("Sending a message indicating I'm free")
                     self._first_time_free = False
                 await self.send_async(freemsg)
                 try:
