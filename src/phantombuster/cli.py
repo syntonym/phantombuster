@@ -281,6 +281,27 @@ def threshold(outdir, threshold_file):
     project = Project(outdir)
     core.threshold(project, threshold_file)
 
+
+@phantombuster.main_command()
+@click.option("--outdir", required=True, type=click.Path(dir_okay=True, file_okay=False), help='Directory to save all results and temp files')
+@click.option("--category-file", required=True, type=click.Path(file_okay=True, dir_okay=False, exists=True), help='CSV file that specifies the categories for each grna')
+@click.option("--read-file", required=False, default=None, type=click.Path(file_okay=True, dir_okay=False, exists=True), help='Read file to calculate pvalues on. Defaults to the output file of the thresholding step')
+@click.option('--reads-column', default='reads', help='Column used to calculate test statistic with')
+@click.option('--group-by', default='grna', help='Defines the columns used to group individual data points (lineages) to units of analysis (grna). Comma seperated values are interpreted as multiple columns (e.g. `grna,sample`)')
+@click.option('--N', default=1_000_000, help='Size of distribution used for p-value calculation. Smallest non-zero p-value is 1/N')
+@click.option('--max-n', default=950, help='Maximal number of lineages used for variance estimate. Units with more lineages are treated as having max_n lineages.')
+def pvalue(outdir, category_file, read_file, reads_column, group_by, N, max_n):
+    """
+    Calculate pvalues for each gRNA
+    """
+    log_call("pvalue", outdir=outdir, category_file=category_file, read_file=read_file, reads_column=reads_column, group_by=group_by, N=N, max_n=max_n)
+    project = Project(outdir)
+    if read_file is None:
+        read_file = project.threshold_output_path
+
+    group_by = group_by.split(',')
+    core.pvalue(project, read_file, category_file, column=reads_column, group_by=group_by, N=N, max_n=max_n)
+
 # -- Helper Commands -- #
 
 @phantombuster.secondary_command()

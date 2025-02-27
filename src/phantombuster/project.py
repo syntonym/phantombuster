@@ -101,9 +101,15 @@ class Project:
     def threshold_stats_path(self):
         return str(self.stats_dir / 'threshold_statistics.json')
 
+    @property
+    def pvalue_output_path(self):
+        return str(self.data_dir / 'pvalues.csv')
+
     def _to_json_e(self):
         return {'path': self.path, 'tmp_dir': self._tmp_dir, 'stats_dir': self._stats_dir, 'data_dir': self._data_dir}
 
     @classmethod
     def _from_json_e(cls, d: dict):
         return Project(**d)
+
+

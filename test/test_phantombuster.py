@@ -27,6 +27,7 @@ import phantombuster.cli
 import phantombuster.io_
 import phantombuster.remoter
 import phantombuster.plumbing
+import phantombuster.statistics
 from phantombuster.merge_cython import xmerge
 from phantombuster.plumbing import pyarrow_table_to_counter
 from phantombuster.plumbing import deduplicator_to_pyarrow_table
@@ -116,10 +117,7 @@ def copy_file_efficiently(src, dst):
     with open(src, mode="br") as f_src:
         count = os.fstat(f_src.fileno()).st_size
         with open(dst, mode="bw") as f_dst:
-            try:
-                os.copy_file_range(f_src.fileno(), f_dst.fileno(), count)
-            except OSError:
-                shutil.copyfile(src, dst)
+            shutil.copyfile(src, dst)
 
 
 # -- Unit Tests -- #
@@ -166,11 +164,13 @@ def test_unit_plumbing_extract_read_information_1():
         bcregex = regex.compile("(?P<grna>[ACGT]{11})")
         queryregex = regex.compile("GGGC(?P<sample>[ACGT]{5})(?P<lid>[ACGT]{30})")
 
-        regex_dictionary = {'b2': b2regex, 'bc': bcregex, 'query': queryregex}
+        regex_dictionary = {'B2': b2regex, 'BC': bcregex, 'query': queryregex}
 
         bamfile = iter(open_sequencing_file(f.name, type='sam'))
         read = next(bamfile)
         features = phantombuster.plumbing.extract_read(regex_dictionary, read)
+
+        print(features)
 
         assert features["grna"] == "TTTCCCACCCT"
         assert features["sample"] == "GTGGA"
@@ -186,7 +186,7 @@ def test_unit_plumbing_extract_read_information_2():
         b2regex = regex.compile("(?P<lid1>[ACGT]{9})")
         bcregex = regex.compile("(?P<grna>[ACGT]{11})")
         queryregex = regex.compile("GGGC(?P<sample>[ACGT]{5})(?P<lid2>[ACGT]{30})")
-        regex_dictionary = {'b2': b2regex, 'bc': bcregex, 'query': queryregex}
+        regex_dictionary = {'B2': b2regex, 'BC': bcregex, 'query': queryregex}
 
         bamfile = iter(open_sequencing_file(f.name, type='sam'))
         read = next(bamfile)
@@ -206,7 +206,7 @@ def test_unit_plumbing_extract_read_information_uncommon_names():
         b2regex = regex.compile("(?P<cellidentifier1>[ACGT]{9})")
         bcregex = regex.compile("(?P<cellline>[ACGT]{11})")
         queryregex = regex.compile("GGGC(?P<organoid>[ACGT]{5})(?P<cellidentifier2>[ACGT]{30})")
-        regex_dictionary = {'b2': b2regex, 'bc': bcregex, 'query': queryregex}
+        regex_dictionary = {'B2': b2regex, 'BC': bcregex, 'query': queryregex}
 
         bamfile = iter(open_sequencing_file(f.name, type='sam'))
         read = next(bamfile)
@@ -226,7 +226,7 @@ def test_unit_plumbing_extract_read_information_as_lt47_experiment():
         b2regex = regex.compile("^[ACGTN]{3}(?P<sample>[ACGTN]{5})")
         bcregex = regex.compile("")
         queryregex = regex.compile("(?P<lid>[ACGTN]{5,6}(?P<lib>ACGT|GTAC){s<=1}[ACGTN]+)")
-        regex_dictionary = {'b2': b2regex, 'bc': bcregex, 'query': queryregex}
+        regex_dictionary = {'B2': b2regex, 'BC': bcregex, 'query': queryregex}
 
         bamfile = iter(open_sequencing_file(f.name, type='sam'))
         read = next(bamfile)
@@ -369,8 +369,8 @@ def test_unit_extract_section():
     bcregex = "(?P<grna>[ACGT]{11})"
     queryregex = "(?P<lib>GGGC)(?P<sample>[ACGT]{5})(?P<lid>[ACGT]{30})"
     regex_dictionary = phantombuster.config_files.RegexDictionary()
-    regex_dictionary.add_regex('b2', b2regex)
-    regex_dictionary.add_regex('bc', bcregex)
+    regex_dictionary.add_regex('B2', b2regex)
+    regex_dictionary.add_regex('BC', bcregex)
     regex_dictionary.add_regex('query', queryregex)
 
     samples = ["GTGGA", "TTTGA"]
@@ -475,8 +475,8 @@ def test_unit_combine():
     bcregex = "(?P<grna>[ACGT]{11})"
     queryregex = "(?P<lib>GGGC)(?P<sample>[ACGT]{5})(?P<lid>[ACGT]{30})"
     regex_dictionary = phantombuster.config_files.RegexDictionary()
-    regex_dictionary.add_regex('b2', b2regex)
-    regex_dictionary.add_regex('bc', bcregex)
+    regex_dictionary.add_regex('B2', b2regex)
+    regex_dictionary.add_regex('BC', bcregex)
     regex_dictionary.add_regex('query', queryregex)
 
     samples = ["GTGGA"]
@@ -791,6 +791,21 @@ def test_unit_combine_large_tables():
     assert len(d) == N
 
 
+def test_unit_statistics():
+    df = pl.DataFrame({'grna': ['A', 'A', 'A', 'B', 'C', 'C'],
+                       'category': ['control', 'control', 'control', 'test', 'test', 'test'],
+                       'reads': [10, 20, 30, 25, 5, 5]})
+
+    r = phantombuster.statistics.calculate_pvalues(df, column='reads', group_by=['grna'], N=10000)
+    for row in r.iter_rows(named=True):
+        if row['grna'] == 'B':
+            assert row['pvalue'] - 0.66 < 0.05
+            assert row['lineages'] == 1
+        elif row['grna'] == 'C':
+            assert row['pvalue'] == 0.0
+            assert row['lineages'] == 2
+
+
 # -- Integration test helpers -- #
 
 
@@ -855,10 +870,10 @@ def setup_lineage_data_1010():
 def test_integration_read_regex_file(setup_lineage_data_small):
     regex_dict = phantombuster.config_files.read_regex_file('regexes.csv')
     regexes = regex_dict.get_regexes_for_group('*')
-    assert regexes['b2'] == regex.compile('^[ACGTN]{3}(?P<sample>[ACGTN]{5})')
+    assert regexes['B2'] == regex.compile('^[ACGTN]{3}(?P<sample>[ACGTN]{5})')
     assert regexes['query'] == regex.compile('(?P<lid>[ACGTN]{5,6}(?P<lib>ACGT|GTAC){s<=1}[ACGTN]+)')
 
-    assert regexes['b2'].match('AAACGTAGC').group('sample') == 'CGTAG'
+    assert regexes['B2'].match('AAACGTAGC').group('sample') == 'CGTAG'
     assert regexes['query'].match('AAAAAGTACAAAAAAAAAAA').group('lib') == 'GTAC'
 
 
@@ -934,7 +949,7 @@ def test_integration_read_bam(setup_lineage_data_1010):
         fi = iter(f)
         read = next(fi)
         assert read['query'] == 'ACGGGTGAAGTGGAAAGGACGACACACCGGTACAAGATCAACAACAAAGGTT'
-        assert read['b2'] == 'CGCTATCAA'
+        assert read['B2'] == 'CGCTATCAA'
 
 
 @pytest.mark.slow
@@ -1021,6 +1036,17 @@ def test_integration_fullrun_multiple_files(setup_lineage_data_big):
     r = result[result["lid"] == "CGGGTGAAGTGGAAAGGACGAAACACCGGTACAAGATCAACAACAAAGGT"]
     assert r["lib"][0] == "lib1"
     assert r["reads"][0] == 500
+
+@pytest.mark.slow
+def test_integration_pvalue(setup_lineage_data_big):
+    input_files_file, regex_file = setup_lineage_data_big
+    project = Project("out")
+
+    core.demultiplex(input_files_file, regex_file=regex_file, barcode_hierarchy_file="barcode_hierarchy.csv", project=project, debug=True, show_qc=False)
+    core.error_correct(project, error_threshold=1, barcode_hierarchy_file="barcode_hierarchy.csv", remove_ambigious=True)
+    core.hopping_removal(project, ['lid'], 0.05)
+    core.threshold(project, 'thresholds.csv')
+    core.pvalue(project, project.threshold_output_path, 'categories.csv', group_by=['sample'])
 
 
 @pytest.mark.slow

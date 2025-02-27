@@ -399,6 +399,7 @@ def extract_read(regex_dictionary, read):
 
         if not match_:
             continue
+
         groups.update(match_.groupdict())
 
     tag_stems = [tag.rstrip('0123456789') for tag in groups.keys()]
@@ -496,7 +497,6 @@ def error_correct_column(partition, tag, threshold):
 
 def remove_ambigious(table, barcode_hierarchy):
     df = pl.from_arrow(table)
-    print(df)
     for tag in barcode_hierarchy:
         if tag['type'] == 'random':
             df = df.filter(~pl.col(tag['name']).str.contains_any(["R", "Y", "S", "W", "K", "M", "B", "D", "H", "V", "N"]))

@@ -5,6 +5,7 @@ import pysam
 import gzip
 from dataclasses import dataclass
 import pyarrow.parquet
+import polars as pl
 
 
 STAGES = ["deduplication", "error_corrected", "hopping_removal", "thresholded"]
@@ -179,13 +180,11 @@ class SamSequencingFile(SequencingFile):
                 break
 
             try:
-                b2 = read.get_tag('B2')
-                b2_q = read.get_tag('Q2')
-                bc = read.get_tag('BC')
-                bc_q = read.get_tag('QT')
                 query = read.query_sequence
-                query_qc = read.query_qualities
-                yield {'query': query, 'query_qc': query_qc, 'b2': b2, 'b2_qc': b2_q, 'bc': bc, 'bc_qc': bc_q}
+                data = {'query': query}
+                for key, value in read.tags:
+                    data[key] = value
+                yield data
             except KeyError:
                 pass
 
@@ -240,3 +239,7 @@ class FastqSequencingFile(SequencingFile):
 
 def write_parquet(table, path):
     pyarrow.parquet.write_table(table, path)
+
+def write_csv(table, path):
+    df = pl.DataFrame(table)
+    df.write_csv(path)

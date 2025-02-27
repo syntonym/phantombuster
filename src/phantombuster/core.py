@@ -15,13 +15,15 @@ import phantombuster.remoter
 from phantombuster import porcelain, plumbing, stores
 from phantombuster.stores import deduplicator_to_pyarrow_table
 from phantombuster.remoter import Scheduler
-from phantombuster.io_ import PathsAndFiles, write_parquet
+from phantombuster.io_ import PathsAndFiles, write_parquet, write_csv
 from phantombuster.project import Project
 from phantombuster.config_files import read_barcode_hierarchy_file, read_input_files_file, read_regex_file
+import phantombuster.statistics as statistics
 import click
 from typing import Optional, List
 import pyarrow.parquet
 import pyarrow.csv
+import polars as pl
 
 from pathlib import Path
 
@@ -77,6 +79,7 @@ def demultiplex(input_files_file, regex_file, barcode_hierarchy_file, project, d
         logging.info(f"{str(count).rjust(m)} Reads were unfit due to {reason}")
 
     r = (maintable, (reads, remaining_reads, counters_success, counters_fail))
+    print(maintable)
     return r
 
 
@@ -108,6 +111,7 @@ def hopping_removal(project, hopping_barcodes, alpha_threshold):
     table_file = project.error_correct_output_path
 
     r, stats = porcelain.hopping_removal(table_file, alpha_threshold, hopping_barcodes)
+
     write_parquet(r, project.hopping_removal_output_path)
     with open(project.hopping_removal_stats_path, mode='w') as f:
         json.dump(stats, f)
@@ -117,10 +121,23 @@ def threshold(project, threshold_file):
     project.create()
 
     # read in threshold file
-    thresholds = porcelain.read_threshold_file(threshold_file)
+    thresholds = porcelain.read_file(threshold_file)
 
     table, stats = porcelain.threshold(project, threshold_file)
 
     write_parquet(table, project.threshold_output_path)
     with open(project.threshold_stats_path, mode='w') as f:
         json.dump(stats, f)
+
+
+def pvalue(project, read_file, category_file, column='reads', group_by=['grna'], N=1_000_000, max_n=950):
+    project.create()
+    categories = pl.DataFrame(porcelain.read_file(category_file))
+    table = pl.read_parquet(read_file)
+
+    join_columns = [col for col in categories.columns if col != 'category']
+
+    table = table.join(categories, on=join_columns)
+
+    results = statistics.calculate_pvalues(table, column=column, group_by=group_by, N=N, max_n=max_n)
+    write_csv(results, project.pvalue_output_path)

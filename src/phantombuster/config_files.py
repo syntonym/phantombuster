@@ -5,7 +5,7 @@ import pyarrow.csv
 import regex
 from phantombuster.plumbing import calculate_threshold
 
-VALID_TAGS = ['b2', 'query', 'bc', 'name', 'seq']
+VALID_TAGS = ['B2', 'query', 'BC', 'name', 'seq']
 
 
 def read_file(name: str) -> pyarrow.Table:

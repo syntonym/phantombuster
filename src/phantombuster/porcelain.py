@@ -5,6 +5,7 @@ import phantombuster.config_files
 
 from .plumbing import pairwise
 from phantombuster import bamindexer
+from phantombuster import statistics
 from phantombuster.io_ import write_parquet
 
 import os
@@ -183,7 +184,7 @@ def demultiplex(input_files_file, outpath, outpath_stats, regex_file, barcode_hi
     if out is None or out[0] is None:
         logger.error("Not a single read was extracted. This might indicates a problem with the references or a missconfiguration of the regexes. Aborting. ")
         logger.debug('Result of combining all files is: %s', out)
-        raise Exception()
+        raise Exception("Not a single read extracted")
 
     write_parquet(out[0], outpath)
 
@@ -193,14 +194,14 @@ def demultiplex(input_files_file, outpath, outpath_stats, regex_file, barcode_hi
     logger.info("Demultiplexing done")
     return out
 
-def read_threshold_file(threshold_file):
-    if threshold_file.endswith(".csv"):
-        f = pa.csv.read_csv(threshold_file)
-    elif threshold_file.endswith(".parquet"):
-        f = pa.parquet.read_table(threshold_file)
+def read_file(path):
+    if path.endswith(".csv"):
+        df = pa.csv.read_csv(path)
+    elif path.endswith(".parquet"):
+        df = pa.parquet.read_table(path)
     else:
-        raise PhantomBusterUnknownFileType("Thresholdfile {threshold_file} has unknown file type. Supported are .csv and .parquet.")
-    return f
+        raise PhantomBusterUnknownFileType("File {threshold_file} has unknown file type. Supported are .csv and .parquet.")
+    return df
 
 def error_correct(samplefile, outfilename, threshold, barcode_hierarchy, project, remove_ambigious):
 
@@ -344,7 +345,7 @@ def hopping_removal(input_file, alpha_threshold, hopping_barcodes):
 
 
 def threshold(project, threshold_file):
-    thresholds = pl.DataFrame(read_threshold_file(threshold_file))
+    thresholds = pl.DataFrame(read_file(threshold_file))
     table = pl.read_parquet(project.hopping_removal_output_path)
 
     lids_before = len(table)
@@ -365,3 +366,5 @@ def threshold(project, threshold_file):
              "reads_before": reads_before,
              "reads_after": reads_after}
     return table.to_arrow(), stats
+
+
