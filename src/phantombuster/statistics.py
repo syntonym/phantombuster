@@ -23,7 +23,7 @@ def null_distribution(df, column='cells', N=1_000, max_n=950):
 
 def calculate_pvalues(df, column="reads", group_by=['grna'], N=1_000_000, max_n=950):
     controls = df.filter(pl.col('category') == 'control')
-    to_test = df.filter(pl.col('category') != 'control')
+    to_test = df
 
     if len(to_test) == 0:
         raise ValueError('No control lineages')

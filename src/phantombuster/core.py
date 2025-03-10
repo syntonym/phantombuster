@@ -112,6 +112,11 @@ def hopping_removal(project, hopping_barcodes, alpha_threshold):
 
     r, stats = porcelain.hopping_removal(table_file, alpha_threshold, hopping_barcodes)
 
+    print(f"LIDs before hopping removal: {stats['lids_before']}")
+    print(f"LIDs after hopping removal: {stats['lids_after']}")
+    print(f"Reads before hopping removal: {stats['reads_before']}")
+    print(f"Reads after hopping removal: {stats['reads_after']}")
+
     write_parquet(r, project.hopping_removal_output_path)
     with open(project.hopping_removal_stats_path, mode='w') as f:
         json.dump(stats, f)
@@ -137,7 +142,8 @@ def pvalue(project, read_file, category_file, column='reads', group_by=['grna'],
 
     join_columns = [col for col in categories.columns if col != 'category']
 
-    table = table.join(categories, on=join_columns)
+    table = table.join(categories, on=join_columns, validate='m:1')
 
     results = statistics.calculate_pvalues(table, column=column, group_by=group_by, N=N, max_n=max_n)
+    results = results.join(categories, on=join_columns, validate='1:1')
     write_csv(results, project.pvalue_output_path)

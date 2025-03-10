@@ -244,7 +244,7 @@ def demultiplex(input_file, regex_file, debug, outdir, barcode_file):
 @click.option("--error-threshold", default=1, help='Maximal Hamming distance to consider two barcode sequences related')
 @click.option("--barcode-file", required=True, type=click.Path(exists=True, file_okay=True, dir_okay=False), help='CSV file that specifies all barcodes and their type')
 @click.option("--remove-ambigious/--keep-ambigious", default=False, help='Remove combinations with ambigious characters (NRYSWKMBDHV) after error correction')
-def error_correct(outdir, error_threshold, barcode_file):
+def error_correct(outdir, error_threshold, barcode_file, remove_ambigious):
     """
     Correct sequencing errors in random barcode sequences originating from single-nucleotide errors
 
@@ -290,17 +290,17 @@ def threshold(outdir, threshold_file):
 @click.option('--group-by', default='grna', help='Defines the columns used to group individual data points (lineages) to units of analysis (grna). Comma seperated values are interpreted as multiple columns (e.g. `grna,sample`)')
 @click.option('--N', default=1_000_000, help='Size of distribution used for p-value calculation. Smallest non-zero p-value is 1/N')
 @click.option('--max-n', default=950, help='Maximal number of lineages used for variance estimate. Units with more lineages are treated as having max_n lineages.')
-def pvalue(outdir, category_file, read_file, reads_column, group_by, N, max_n):
+def pvalue(outdir, category_file, read_file, reads_column, group_by, n, max_n):
     """
     Calculate pvalues for each gRNA
     """
-    log_call("pvalue", outdir=outdir, category_file=category_file, read_file=read_file, reads_column=reads_column, group_by=group_by, N=N, max_n=max_n)
+    log_call("pvalue", outdir=outdir, category_file=category_file, read_file=read_file, reads_column=reads_column, group_by=group_by, N=n, max_n=max_n)
     project = Project(outdir)
     if read_file is None:
         read_file = project.threshold_output_path
 
     group_by = group_by.split(',')
-    core.pvalue(project, read_file, category_file, column=reads_column, group_by=group_by, N=N, max_n=max_n)
+    core.pvalue(project, read_file, category_file, column=reads_column, group_by=group_by, N=n, max_n=max_n)
 
 # -- Helper Commands -- #
 
