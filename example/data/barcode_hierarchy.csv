@@ -1,0 +1,4 @@
+barcode,type,referencefile,threshold,min_length,max_length
+sample,reference,data/sample_barcodes.csv,auto,-,-
+grna,reference,data/grna_barcodes.csv,auto,-,-
+lineage,random,-,-,-,-

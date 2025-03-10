@@ -1,0 +1,4 @@
+tag,regex
+B2,"^(?P<grna>[ACGTN]{12})"
+BC,"^(?P<sample>[ACGTN]{10})"
+query,"(?P<lineage>[ACGTN]{20})"
